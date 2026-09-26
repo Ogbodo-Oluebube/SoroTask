@@ -1,6 +1,34 @@
 const DECIMAL_AMOUNT = /^(?:0|[1-9]\d*)(?:\.\d+)?$/;
 
 export type TokenAmountInput = string | bigint;
+export const MAX_U128 = (1n << 128n) - 1n;
+
+/** Convert whole Stellar XLM to its exact 7-decimal stroop count. */
+export function toStroops(amount: string): bigint {
+  return parseUnits(amount, 7);
+}
+
+/** Convert a stroop count to a canonical decimal XLM string. */
+export function fromStroops(stroops: TokenAmountInput): string {
+  return formatUnits(stroops, 7);
+}
+
+/** Exact unsigned multiplication followed by floor division. */
+export function mulDivFloor(value: bigint, numerator: bigint, denominator: bigint): bigint {
+  assertUnsigned(value, "value");
+  assertUnsigned(numerator, "numerator");
+  assertPositive(denominator, "denominator");
+  return value * numerator / denominator;
+}
+
+/** Exact unsigned multiplication followed by ceiling division. */
+export function mulDivCeil(value: bigint, numerator: bigint, denominator: bigint): bigint {
+  assertUnsigned(value, "value");
+  assertUnsigned(numerator, "numerator");
+  assertPositive(denominator, "denominator");
+  const product = value * numerator;
+  return (product + denominator - 1n) / denominator;
+}
 
 /** Convert a base-unit integer to a decimal token string without using Number. */
 export function formatUnits(value: TokenAmountInput, decimals = 7): string {
@@ -30,8 +58,10 @@ export function parseUnits(value: string, decimals = 7): bigint {
     throw new Error(`Token amount supports at most ${decimals} decimal places`);
   }
 
-  return BigInt(whole) * 10n ** BigInt(decimals) +
+  const result = BigInt(whole) * 10n ** BigInt(decimals) +
     BigInt((fraction + "0".repeat(decimals)).slice(0, decimals) || "0");
+  if (result > MAX_U128) throw new Error("Token amount exceeds the maximum u128 value");
+  return result;
 }
 
 /** True when a form value can be submitted as an exact base-unit integer. */
@@ -55,4 +85,12 @@ function assertDecimals(decimals: number): void {
   if (!Number.isInteger(decimals) || decimals < 0) {
     throw new Error("Token decimals must be a non-negative integer");
   }
+}
+
+function assertUnsigned(value: bigint, name: string): void {
+  if (value < 0n || value > MAX_U128) throw new Error(`${name} must fit in unsigned u128`);
+}
+
+function assertPositive(value: bigint, name: string): void {
+  if (value <= 0n || value > MAX_U128) throw new Error(`${name} must be a positive u128`);
 }
